@@ -101,8 +101,8 @@ define([], function() {
 	}
 
 	Play.prototype.create = function() {
-		var socket = io();
-		var game = this.game;
+		var socket = io(); var game = this.game; var player; var enemy; //declaring all global variables;
+
 		game.physics.startSystem(Phaser.Physics.P2JS);
 		game.world.setBounds(0, 0, game.width, game.height);
 		game.physics.p2.setImpactEvents(true);
@@ -118,15 +118,52 @@ define([], function() {
 		socket.emit('new player'); //telling server that this player is being created
 
 		socket.on('add player', function(res) {
-			var player = new Player(game, res.position, res.direction, true);
+			player = new Player(game, res.position, res.direction, true);
 			game.add.existing(player);
-			socket.emit('player added');
+			socket.emit('player added', {position: player.position, direction: player.direction});
 		})
 
-		socket.on
+		// for new connection to show where current players are
+		socket.on('current players', function(res) {
+			enemy = new Player(game, res.position, res.direction, false);
+			game.add.existing(enemy);
+			socket.emit('current players locations', {position: player.position, direction: player.direction});
+		})
+
+		socket.on('current locations', function(res) {
+			console.log(res);
+			enemy = new Player(game, res.position, res.direction, false);
+			game.add.existing(enemy);
+		})
 	}
 
 	Play.prototype.update = function() {
+		if(player !== undefined) { move(player); }
+		if(enemy !== undefined) { move(enemy); }
+		
+		if(this.input.keyboard.isDown(32)) {
+			player.casting = true;
+			player.shootFire(this.game.input.activePointer);
+		} 
+
+		if(this.input.activePointer.isDown) {
+			changeDirection();
+		}
+	}
+
+	function move(unit) {
+		var dx = unit.direction.x - unit.position.x;
+		var dy = unit.direction.y - unit.position.y;
+		var magnitude = Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2));
+
+		if(magnitude > unit.min_distance) {
+			var rotation = game.math.angleBetween(unit.x, unit.y, unit.direction.x, unit.direction.y);
+			unit.body.velocity.x = Math.cos(rotation) * unit.speed;
+			unit.body.velocity.y = Math.sin(rotation) * unit.speed;
+		} else {
+			unit.body.velocity.x = 0;
+			unit.body.velocity.y = 0;
+		}
 	}
 
 

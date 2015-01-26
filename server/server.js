@@ -50,9 +50,63 @@ io.on('connection', function(socket) {
 	
 	socket.on('new player', function(res) {
 		socket.emit('add player', {position: player.position, direction: player.direction});
+		// socket.broadcast.emit('another new player', {position: player.position, direction: player.direction});
+		// broadcast emit is not to new players only current sockets;
 	})
+
+	socket.on('player added', function(res) {
+		console.log('player added');
+		socket.broadcast.emit('current players', res);
+	})
+
+	socket.on('current players locations', function(res) {
+		console.log(res);
+		socket.broadcast.emit('current locations', res);
+	})
+
+
+
+
 
 	socket.on('disconnect', function(res) {
 		console.log('Socket disconnect!');
 	})
 })
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
