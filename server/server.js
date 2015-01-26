@@ -6,7 +6,6 @@ var mongoose = require('mongoose');
 
 var index = 0;
 def_pos = [{x: 180, y: 180}, {x: 180, y: 600}, {x: 600, y: 180}, {x: 600, y: 600}];
-def_dir = {x: 0, y: 0};
 
 app.set('port', (process.env.PORT || 5000));
 app.use(express.static(__dirname + '/../game'));
@@ -46,22 +45,26 @@ var Fireball = mongoose.model('Fireball', fireballSchema);
 io.on('connection', function(socket) {
 	console.log('New Connection!');
 	index++;
-	var player = new Player({position: def_pos[index%4], direction: def_dir});
+	var player = new Player({position: def_pos[index%4]});
 	
 	socket.on('new player', function(res) {
-		socket.emit('add player', {position: player.position, direction: player.direction});
-		// socket.broadcast.emit('another new player', {position: player.position, direction: player.direction});
-		// broadcast emit is not to new players only current sockets;
+		socket.emit('add player', {position: player.position});
 	})
 
 	socket.on('player added', function(res) {
-		console.log('player added');
 		socket.broadcast.emit('current players', res);
 	})
 
 	socket.on('current players locations', function(res) {
-		console.log(res);
 		socket.broadcast.emit('current locations', res);
+	})
+
+	socket.on('moving', function(res) {
+		socket.broadcast.emit('change directions', res);
+	})
+
+	socket.on('firecast', function(res) {
+		socket.broadcast.emit('fireball', res);
 	})
 
 
@@ -69,7 +72,8 @@ io.on('connection', function(socket) {
 
 
 	socket.on('disconnect', function(res) {
-		console.log('Socket disconnect!');
+		socket.broadcast.emit('disconnected', res);
+		console.log('player disconnected!');
 	})
 })
 
