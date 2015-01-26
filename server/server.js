@@ -5,7 +5,7 @@ var io = require('socket.io')(http);
 var mongoose = require('mongoose');
 
 var index = 0;
-def_pos = [{x: 180, y: 180}, {x: 180, y: 600}, {x: 600, y: 180}, {x: 600, y: 600}];
+def_pos = [{x: 300, y: 300}, {x: 300, y: 800}, {x: 800, y: 300}, {x: 800, y: 800}];
 
 app.set('port', (process.env.PORT || 5000));
 app.use(express.static(__dirname + '/../game'));
@@ -65,6 +65,14 @@ io.on('connection', function(socket) {
 
 	socket.on('firecast', function(res) {
 		socket.broadcast.emit('fireball', res);
+	})
+
+	socket.on('enemyHit', function(res) {
+		socket.broadcast.emit('enemy hit', res);
+	})
+
+	socket.on('playerHit', function(res) {
+		socket.broadcast.emit('player hit', res);
 	})
 
 

@@ -11,7 +11,6 @@ define(['states/boot', 'states/main_menu', 'states/play'], function(Boot, Menu, 
 			game.state.add('boot', Boot)
 			game.state.add('menu', Menu);
 			game.state.add('play', Play);
-
 			game.state.start('boot');
 		}
 	}

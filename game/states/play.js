@@ -8,6 +8,7 @@ define([], function() {
 		// SERVER SIDE UPDATED PROPERTIES
 		this.direction = {x: position.x, y: position.y};
 		this.position = {x: position.x, y: position.y};
+		this.self = self;
 
 		// GAME PROPERTIES
 		game.physics.p2.enable(this);
@@ -17,6 +18,7 @@ define([], function() {
 		this.checkWorldBounds = true;
 		this.outOfBoundsKill = true;
 
+		this.damage = 10;
 		this.speed = 200; //px/sec
 		this.body.velocity.x = direction.x * this.speed;
 		this.body.velocity.y = direction.y * this.speed;
@@ -29,24 +31,26 @@ define([], function() {
 	}
 
 	function Player(game, position, self, direction){
-		Phaser.Sprite.call(this, game, position.x, position.y, 'player');
+		var player = this;
+		Phaser.Sprite.call(player, game, position.x, position.y, 'player');
 		// SERVER SIDE UPDATED PROPERTIES
-		this.direction = {x: position.x, y: position.y};
-		this.position = {x: position.x, y: position.y};
-		this.health = {current: 100, max: 100};
+		player.direction = {x: position.x, y: position.y};
+		player.position = {x: position.x, y: position.y};
+		player.health = {current: 100, max: 100};
+		player.self = self;
 
 		// GAME PROPERTIES
-		game.physics.p2.enable(this);
-		this.collideWorldBounds = true;
-		this.anchor.setTo(0.5, 0.5);
-		this.scale.setTo(0.25);
-		this.body.setCircle(30);
+		game.physics.p2.enable(player);
+		player.collideWorldBounds = true;
+		player.anchor.setTo(0.5, 0.5);
+		player.scale.setTo(0.25);
+		player.body.setCircle(30);
 
-		this.speed = 150;
-		this.sp_mult = 1;
-		this.cast_delay = 2000;
-		this.casting = false;
-		this.min_distance = 10;
+		player.speed = 150;
+		player.sp_mult = 1;
+		player.cast_delay = 2000;
+		player.casting = false;
+		player.min_distance = 10;
 	}
 
 	Player.prototype = Object.create(Phaser.Sprite.prototype);
@@ -68,9 +72,11 @@ define([], function() {
 		this.fire.reset(this.x, this.y);
 
 		var rotation = this.game.math.angleBetween(this.x, this.y, direction.x, direction.y);
-		 this.fire.body.velocity.x = Math.cos(rotation) * this.fire.speed;
+		this.fire.body.velocity.x = Math.cos(rotation) * this.fire.speed;
         this.fire.body.velocity.y = Math.sin(rotation) * this.fire.speed; 
         this.casting = false;
+
+        return this.fire;
 	}
 
 	Player.prototype.update = function() {
@@ -93,8 +99,14 @@ define([], function() {
 		this.direction.y = direction.y;
 	}
 
+	Player.prototype.isHit = function(body, A, B, eq){
+		console.log(body);
+		// if(body.sprite.key == 'fireball'){
+		// }
+	}
+
 	Play.prototype.preload = function(){
-		this.game.load.image('player', 'assets/player.png');
+		this.game.load.image('player', 'assets/player2.png');
 		this.game.load.image('fireball', 'assets/spell_fireball.png');
 		this.game.load.image('stage', '/assets/stone_stage.png');
 		this.game.load.image('lava', '/assets/lava_bg.png');
@@ -111,10 +123,10 @@ define([], function() {
 		game.physics.p2.restitution = 1.0;
 
 		var lava = game.add.sprite(0, 0, 'lava');
-		var stage = game.add.sprite(144, 144, 'stage');
+		var stage = game.add.sprite(256, 256, 'stage');
 
-		var playerFires = game.physics.p2.createCollisionGroup();
-		var enemyFires = game.physics.p2.createCollisionGroup();
+		var playerFire = game.physics.p2.createCollisionGroup();
+		var enemyFire = game.physics.p2.createCollisionGroup();
 		var playerGroup = game.physics.p2.createCollisionGroup();
 		var enemyGroup = game.physics.p2.createCollisionGroup();
 
@@ -123,6 +135,8 @@ define([], function() {
 		socket.on('add player', function(res) {
 			player = new Player(game, res.position, true);
 			game.add.existing(player);
+			player.body.setCollisionGroup(playerGroup);
+			player.body.collides([enemyGroup, enemyFire])
 			socket.emit('player added', {position: player.position});
 		})
 
@@ -130,6 +144,8 @@ define([], function() {
 		socket.on('current players', function(res) {
 			enemy = new Player(game, res.position, false); //new player is added to current map
 			game.add.existing(enemy);
+			enemy.body.setCollisionGroup(enemyGroup);
+			enemy.body.collides([playerGroup, playerFire])
 			socket.emit('current players locations', {position: player.position});
 		})
 
@@ -137,6 +153,8 @@ define([], function() {
 		socket.on('current locations', function(res) {
 			enemy = new Player(game, res.position, false); //current players added to remote user map
 			game.add.existing(enemy);
+			enemy.body.setCollisionGroup(enemyGroup);
+			enemy.body.collides([playerGroup, playerFire])
 		})
 
 		socket.on('change directions', function(res) {
@@ -145,7 +163,41 @@ define([], function() {
 		})
 
 		socket.on('fireball', function(res) {
-			enemy.shootFire(res.direction, false);
+			fire = enemy.shootFire(res.direction, false);
+			fire.body.setCollisionGroup(enemyFire);
+			fire.body.collides([playerGroup, playerFire], function(A, B){
+				if(!A.sprite.self){
+					var direction = {x: A.sprite.direction.x, y: A.sprite.direction.y};
+					B.sprite.health.current -= A.sprite.damage;
+
+					// FIREBALL COLLISION
+					console.log(direction)
+					console.log(A.sprite.body.velocity);
+					
+					B.sprite.direction.x = direction.x * 0.5;
+					B.sprite.direction.y = direction.y * 0.5;
+
+					socket.emit('playerHit', {damage: A.sprite.damage, direction: direction});
+					A.sprite.kill();
+				}
+				console.log(A.sprite.key, B.sprite.key, 'top');
+			}, this)
+		})
+
+		socket.on('player hit', function(res) {
+			console.log('enemy was hit! -- Damage: ' + res.damage)
+			console.log('health: ' + enemy.health.current);
+			if(enemy.health <= 0) {
+				enemy.kill();
+			}
+		})
+
+		socket.on('enemy hit', function(res) {
+			console.log('you were hit! -- Damage: ' + res.damage);
+			console.log('health: ' + player.health.current);
+			if(player.health <= 0) {
+				player.kill();
+			}
 		})
 
 		socket.on('disconnected', function(res) {
@@ -160,7 +212,21 @@ define([], function() {
 				player.changeDirection(direction);
 				socket.emit('moving', {direction: direction});	
 			} else {
-				player.shootFire(direction, true);
+				fire = player.shootFire(direction, true);
+				fire.body.setCollisionGroup(playerFire);
+				fire.body.collides([enemyGroup, enemyFire], function(A, B){
+					if(A.sprite.self){
+						var direction = {x: A.sprite.direction.x, y: A.sprite.direction.y};
+						B.sprite.health.current -= A.sprite.damage;
+						// FIREBALL COLLISION
+
+						B.sprite.direction.x = direction.x * 0.5;
+						B.sprite.direction.y = direction.y * 0.5;
+						
+						socket.emit('enemyHit', {damage: A.sprite.damage, direction: direction});
+						A.sprite.kill();
+					}
+				})
 				player.casting = false;
 				socket.emit('firecast', {direction: direction});
 			}
@@ -175,57 +241,9 @@ define([], function() {
 		var game = this.game;
 	}
 
+	Play.prototype.render = function() {
+		this.game.debug.text('Fullstack Arena', 32, 32);
+	}
 	
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 	return Play;
 })
