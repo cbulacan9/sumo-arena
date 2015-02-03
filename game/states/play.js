@@ -6,8 +6,8 @@ define([], function() {
 	function Fireball(game, position, self, direction){
 		Phaser.Sprite.call(this, game, position.x, position.y, 'fireball');
 		// SERVER SIDE UPDATED PROPERTIES
+		this.origin = {x: position.x, y: position.y};
 		this.direction = {x: position.x, y: position.y};
-		this.position = {x: position.x, y: position.y};
 		this.self = self;
 
 		// GAME PROPERTIES
@@ -41,10 +41,12 @@ define([], function() {
 
 		// GAME PROPERTIES
 		game.physics.p2.enable(player);
-		player.collideWorldBounds = true;
 		player.anchor.setTo(0.5, 0.5);
 		player.scale.setTo(0.25);
 		player.body.setCircle(30);
+
+		player.checkWorldBounds = true;
+		player.outOfBoundsKill = true;
 
 		player.speed = 150;
 		player.sp_mult = 1;
@@ -92,17 +94,24 @@ define([], function() {
 			this.body.velocity.x = 0;
 			this.body.velocity.y = 0;
 		}
+
+		if(this.x < 256) {this.health.current--};
+		if(this.x > 768) {this.health.current--};
+		if(this.y < 256) {this.health.current--};
+		if(this.y > 768) {this.health.current--};
+
+		if(this.health.current <= 0) {
+			this.kill();
+			this.destroy();
+		};
+
+		console.log(this.health.current);
+
 	}
 
 	Player.prototype.changeDirection = function(direction) {
 		this.direction.x = direction.x;
 		this.direction.y = direction.y;
-	}
-
-	Player.prototype.isHit = function(body, A, B, eq){
-		console.log(body);
-		// if(body.sprite.key == 'fireball'){
-		// }
 	}
 
 	Play.prototype.preload = function(){
@@ -118,7 +127,6 @@ define([], function() {
 		var socket = io(), game = this.game, player, enemy, fire; //declaring all global variables;
 
 		game.physics.startSystem(Phaser.Physics.P2JS);
-		game.world.setBounds(0, 0, game.width, game.height);
 		game.physics.p2.setImpactEvents(true);
 		game.physics.p2.restitution = 1.0;
 
@@ -166,18 +174,25 @@ define([], function() {
 			fire = enemy.shootFire(res.direction, false);
 			fire.body.setCollisionGroup(enemyFire);
 			fire.body.collides([playerGroup, playerFire], function(A, B){
-				if(!A.sprite.self){
-					var direction = {x: A.sprite.direction.x, y: A.sprite.direction.y};
+
+				if(A.sprite.key == 'fireball' && B.sprite.key == 'fireball'){
+					A.sprite.kill();
+					B.sprite.kill();
+					socket.emit('fireballhit')
+				} else if(!A.sprite.self){
+					var cdirection = {x: res.direction.x  - A.sprite.origin.x, y: res.direction.y - A.sprite.origin.y};
+					var magnitude = Math.sqrt(Math.pow(cdirection.x, 2)+Math.pow(cdirection.y, 2));
+					var normal = {x: cdirection.x / magnitude, y: cdirection.y / magnitude};
+
 					B.sprite.health.current -= A.sprite.damage;
 
 					// FIREBALL COLLISION
-					console.log(direction)
-					console.log(A.sprite.body.velocity);
+					console.log(res, A.sprite.origin, 'top')
 					
-					B.sprite.direction.x = direction.x * 0.5;
-					B.sprite.direction.y = direction.y * 0.5;
+					B.sprite.direction.x = normal.x * A.sprite.speed;
+					B.sprite.direction.y = normal.y * A.sprite.speed;
 
-					socket.emit('playerHit', {damage: A.sprite.damage, direction: direction});
+					socket.emit('playerHit', {damage: A.sprite.damage, direction: cdirection});
 					A.sprite.kill();
 				}
 				console.log(A.sprite.key, B.sprite.key, 'top');
@@ -187,17 +202,11 @@ define([], function() {
 		socket.on('player hit', function(res) {
 			console.log('enemy was hit! -- Damage: ' + res.damage)
 			console.log('health: ' + enemy.health.current);
-			if(enemy.health <= 0) {
-				enemy.kill();
-			}
 		})
 
 		socket.on('enemy hit', function(res) {
 			console.log('you were hit! -- Damage: ' + res.damage);
 			console.log('health: ' + player.health.current);
-			if(player.health <= 0) {
-				player.kill();
-			}
 		})
 
 		socket.on('disconnected', function(res) {
@@ -215,13 +224,21 @@ define([], function() {
 				fire = player.shootFire(direction, true);
 				fire.body.setCollisionGroup(playerFire);
 				fire.body.collides([enemyGroup, enemyFire], function(A, B){
-					if(A.sprite.self){
-						var direction = {x: A.sprite.direction.x, y: A.sprite.direction.y};
-						B.sprite.health.current -= A.sprite.damage;
-						// FIREBALL COLLISION
+					if(A.sprite.key == 'fireball' && B.sprite.key == 'fireball'){
+						A.sprite.kill();
+						B.sprite.kill();
+						socket.emit('fireballhit')
+					} else if(A.sprite.self){
+						var cdirection = {x: game.input.x  - A.sprite.origin.x, y: game.input.y - A.sprite.origin.y};
+						var magnitude = Math.sqrt(Math.pow(cdirection.x, 2)+Math.pow(cdirection.y, 2));
+						var normal = {x: cdirection.x / magnitude, y: cdirection.y / magnitude};
 
-						B.sprite.direction.x = direction.x * 0.5;
-						B.sprite.direction.y = direction.y * 0.5;
+						B.sprite.health.current -= A.sprite.damage;
+
+						// FIREBALL COLLISION
+						console.log(B.sprite.health.current);
+						B.sprite.direction.x = normal.x * A.sprite.speed;
+						B.sprite.direction.y = normal.y * A.sprite.speed;
 						
 						socket.emit('enemyHit', {damage: A.sprite.damage, direction: direction});
 						A.sprite.kill();
@@ -231,10 +248,19 @@ define([], function() {
 				socket.emit('firecast', {direction: direction});
 			}
 		}, this);
+		
+		if(game.device.desktop) {
+			game.input.keyboard.addKey(Phaser.Keyboard.SPACEBAR).onDown.add(function(){
+				player.casting = true;
+			}, this);
+		}
 
-		game.input.keyboard.addKey(Phaser.Keyboard.SPACEBAR).onDown.add(function(){
-			player.casting = true;
-		}, this);
+		if(!game.device.desktop) {
+			game.input.doubleTapRate.add(function() {
+				player.casting = true;
+			}, this);    
+		}
+
 	}
 
 	Play.prototype.update = function() {
